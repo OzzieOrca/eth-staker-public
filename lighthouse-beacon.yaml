@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lighthouse-beacon
+spec:
+  selector:
+    app: lighthouse-beacon
+  ports:
+    - name: for-validator
+      protocol: TCP
+      port: 5052
+    # - name: metrics
+    #   protocol: TCP
+    #   port: 9090
+    - name: for-peers
+      protocol: TCP
+      port: 9000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: lighthouse-beacon
+spec:
+  serviceName: lighthouse-beacon
+  selector:
+    matchLabels:
+      app: lighthouse-beacon
+  revisionHistoryLimit: 0
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: lighthouse-beacon
+      # annotations:
+      #   ad.datadoghq.com/lighthouse-beacon.check_names: |
+      #     ["openmetrics"]
+      #   ad.datadoghq.com/lighthouse-beacon.init_configs: |
+      #     [{}]
+      #   ad.datadoghq.com/lighthouse-beacon.instances: |
+      #     [
+      #       {
+      #         "prometheus_url": "http://%%host%%:%%port%%/metrics",
+      #         "namespace": "lighthouse-beacon",
+      #         "metrics": ["*"]
+      #       }
+      #     ]
+    spec:
+      containers:
+        - name: lighthouse-beacon
+          image: sigp/lighthouse:v1.2.1
+          command: [
+              lighthouse,
+              bn,
+              --network,
+              mainnet,
+              --staking,
+              --http-address,
+              0.0.0.0,
+              --subscribe-all-subnets,
+              --import-all-attestations,
+              --eth1-endpoints,
+              "http://openethereum:8545,https://mainnet.infura.io/v3/<api-key>,https://eth-mainnet.alchemyapi.io/v2/<api-key>,https://cloudflare-eth.com/",
+              --slasher,
+              # --debug-level,
+              # debug,
+              # --metrics,
+              # --metrics-port,
+              # "9090",
+            ]
+          ports:
+            - name: for-validator
+              containerPort: 5052
+            # - name: metrics
+            #   containerPort: 9090
+            - name: for-peers
+              containerPort: 9000
+          resources:
+            requests:
+              cpu: ".1"
+              memory: "1G"
+            limits:
+              cpu: "4"
+              memory: "6G"
+          volumeMounts:
+            - name: lighthouse-beacon-storage
+              mountPath: /root/.lighthouse
+  volumeClaimTemplates:
+    - metadata:
+        name: lighthouse-beacon-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: do-block-storage-persist
+        # local-path
+        resources:
+          requests:
+            # Resize procedure https://serverfault.com/a/989665/75825
+            # Probably needs to be at least 100GB
+            storage: 50Gi

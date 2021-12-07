@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openethereum
+spec:
+  selector:
+    app: openethereum
+  ports:
+    - name: openethereum-json-rpc
+      protocol: TCP
+      port: 8545
+    # - name: metrics
+    #   protocol: TCP
+    #   port: 9090
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openethereum
+spec:
+  serviceName: openethereum
+  selector:
+    matchLabels:
+      app: openethereum
+  revisionHistoryLimit: 0
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: openethereum
+      # annotations:
+      #   ad.datadoghq.com/openethereum-container.check_names: |
+      #     ["openmetrics"]
+      #   ad.datadoghq.com/openethereum-container.init_configs: |
+      #     [{}]
+      #   ad.datadoghq.com/openethereum-container.instances: |
+      #     [
+      #       {
+      #         "prometheus_url": "http://%%host%%:%%port%%/metrics",
+      #         "namespace": "openethereum",
+      #         "metrics": [{"chain_block":"chain.block"}]
+      #       }
+      #     ]
+      #"metrics": [{"chain_block":"chain.block"}, {"import_blocks":"import.blocks"}, {"sync_blocks_highest":"sync.blocks.highest"}, {"sync_blocks_recieved":"sync.blocks.recieved"}, {"sync_blocks_total":"sync.blocks.total"}, {"sync_status":"sync.status"}]
+    spec:
+      containers:
+        - name: openethereum
+          image: openethereum/openethereum:v3.2.1
+          args: [
+              --chain,
+              foundation,
+              --base-path,
+              /home/openethereum/.local/share/openethereum/,
+              --jsonrpc-interface,
+              all,
+              # --metrics,
+              # --metrics-port=9090,
+            ]
+          ports:
+            - name: json-rpc
+              containerPort: 8545
+            # - name: metrics
+            #   containerPort: 9090
+          resources:
+            requests:
+              cpu: ".1"
+              memory: "1M"
+            limits:
+              cpu: "4"
+              memory: "6G"
+          volumeMounts:
+            - name: openethereum-storage
+              mountPath: /home/openethereum/.local/share/openethereum/
+      # https://github.com/openethereum/parity-ethereum/issues/10593#issuecomment-483581245
+      securityContext:
+        fsGroup: 1000
+  volumeClaimTemplates:
+    - metadata:
+        name: openethereum-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: do-block-storage-persist
+        # local-path
+        resources:
+          requests:
+            storage: 150Gi

@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lighthouse-validator-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: do-block-storage-persist
+  # local-path
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lighthouse-validator
+spec:
+  selector:
+    matchLabels:
+      app: lighthouse-validator
+  minReadySeconds: 5
+  revisionHistoryLimit: 0
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Prevent multiple validators from being created
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        app: lighthouse-validator
+    spec:
+      containers:
+        - name: lighthouse-validator
+          image: sigp/lighthouse:v1.2.1
+          command: ["/bin/sh"]
+          args:
+            [
+              "-c",
+              "echo $KEYSTORE_PASSWORD | lighthouse --network mainnet account validator import --directory /root/validator_keys --stdin-inputs && lighthouse --network mainnet vc --beacon-nodes http://lighthouse-beacon:5052,https://<api-key>@eth2-beacon-mainnet.infura.io",
+            ]
+          env:
+            - name: KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: validator-keys-secret
+                  key: keystore-password
+          volumeMounts:
+            - name: validator-keys
+              mountPath: "/root/validator_keys"
+              readOnly: true
+            - name: lighthouse-validator-storage
+              mountPath: /root/.lighthouse
+          resources:
+            requests:
+              cpu: ".5"
+              memory: "0.5G"
+            limits:
+              cpu: "2"
+              memory: "3G"
+      volumes:
+        - name: validator-keys
+          secret:
+            secretName: validator-keys-secret
+        - name: lighthouse-validator-storage
+          persistentVolumeClaim:
+            claimName: lighthouse-validator-storage
